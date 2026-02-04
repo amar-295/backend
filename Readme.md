@@ -1,313 +1,267 @@
-## Chai aur backend series - Youtube
+# ☕ Chai aur Backend — Express Authentication Backend
+
+Production-style backend built as part of the **Chai aur Backend** YouTube series.  
+This project demonstrates real-world authentication, file uploads, token handling, and security patterns using Node.js and Express.
 
 ---
 
-## Table of contents
-- Project overview
-- Tech stack
-- Features
-- Repo layout
-- API: endpoints, auth, request/response examples
-  - /api/v1/users
-    - POST /register
-    - POST /login
-    - POST /logout
-    - POST /refresh-token
-- Data models (User, Video)
-- Middleware and utilities
-- Environment variables
-- Local development (setup & run)
-- File uploads & Cloudinary
-- Security notes & cookies
-- Troubleshooting & common pitfalls
-- 
----
+## 📌 Project Overview
 
-## Project overview
-This repository is an Express-based backend that implements user registration, login, token issuance (access + refresh), logout and token refresh flows, plus utilities for file uploads (multer), Cloudinary integration, and JWT verification middleware.
+This repository contains an **Express-based backend** that supports:
 
-The project stores uploaded files temporarily under `public/temp` before uploading to Cloudinary. It stores refresh tokens on the user model and sets tokens as HTTP-only cookies.
+- User registration with avatar & cover image uploads
+- Login using **username or email**
+- JWT-based authentication (Access + Refresh tokens)
+- Secure logout & refresh-token rotation
+- File uploads using **multer + Cloudinary**
+- MongoDB integration with Mongoose models
+
+Uploaded files are stored temporarily in `public/temp`, uploaded to Cloudinary, and then removed from local storage.
 
 ---
 
-## Tech stack
-- Node.js (ES modules)
-- Express
-- MongoDB (mongoose)
-- Cloudinary (for media uploads)
-- multer (file upload middleware)
-- jsonwebtoken (JWTs)
-- bcrypt (password hashing)
-- mongoose-aggregate-paginate-v2 (used by the Video model)
+## 🛠 Tech Stack
+
+- **Node.js** (ES Modules)
+- **Express**
+- **MongoDB + Mongoose**
+- **Cloudinary** (media uploads)
+- **multer** (file handling)
+- **jsonwebtoken** (JWT)
+- **bcrypt** (password hashing)
+- **mongoose-aggregate-paginate-v2**
 
 ---
 
-## Repo layout (important files)
-- `src/app.js` — Express app, CORS and middleware, route registration (mounts `/api/v1/users`).
-- `src/index.js` — app entry: loads env, connects to MongoDB and starts server.
-- `src/routes/user.routes.js` — user-related routes.
-- `src/controllers/user.controller.js` — register, login, logout, refresh token handlers.
-- `src/models/user.model.js` — User mongoose model, methods for generating tokens & checking password.
-- `src/models/video.model.js` — Video mongoose model (used for video-related data).
-- `src/middlewares/auth.middleware.js` — `verifyJWT` to protect routes.
-- `src/middlewares/multer.middleware.js` — multer disk storage to `./public/temp`.
-- `src/utils/cloudinary.js` — upload to Cloudinary and cleanup local temp file.
-- `src/utils/ApiResponse.js` & `src/utils/ApiError.js` — unified response/error wrappers.
-- `src/utils/asyncHandler.js` — wrapper to handle async controllers.
+## 📂 Repository Structure
+
+src/
+├── app.js # Express app setup & middleware
+├── index.js # Entry point (DB connect + server start)
+├── routes/
+│ └── user.routes.js # User routes
+├── controllers/
+│ └── user.controller.js # Register, login, logout, refresh
+├── models/
+│ ├── user.model.js # User schema & methods
+│ └── video.model.js # Video schema
+├── middlewares/
+│ ├── auth.middleware.js # verifyJWT
+│ └── multer.middleware.js # multer config
+├── utils/
+│ ├── cloudinary.js
+│ ├── ApiResponse.js
+│ ├── ApiError.js
+│ └── asyncHandler.js
+└── constants.js # DB_NAME and constants
+
 
 ---
 
-## Features
-- User registration with avatar (required) and optional cover image (file uploads → Cloudinary).
-- Login with username OR email; sets access and refresh tokens in HTTP-only cookies and returns tokens in JSON.
-- Logout: clears accessToken and refreshToken cookies; removes refreshToken from DB for the user.
-- Refresh token endpoint: accepts refresh token from cookie or request body and issues new tokens.
-- Middleware to verify JWT either from cookie (`accessToken`) or `Authorization: Bearer <token>`.
-- Local disk temp storage for uploaded files and removal after successfully uploading to Cloudinary.
+## ✨ Features
+
+- ✅ Register with **required avatar** & optional cover image
+- ✅ Login using **email OR username**
+- ✅ Access & refresh tokens via **HTTP-only cookies**
+- ✅ Secure logout (DB + cookie cleanup)
+- ✅ Refresh-token rotation with DB validation
+- ✅ JWT verification from **cookies or Authorization header**
+- ✅ Automatic cleanup of temp files after upload
 
 ---
 
-## API
+## 🔗 API Overview
 
-Base path: `/api/v1/users`
+**Base URL**
 
-All responses use the ApiResponse wrapper object:
-- shape (success): { stausCode, data, message, success }
-- errors and failure responses use ApiError (includes statusCode, message, errors array, success=false)
+/api/v1/users
 
-Note: there are a few naming/typos in the source (e.g., `stausCode` in ApiResponse and `refreshAcessToken` controller name). The routes and behavior below reflect the code's actual endpoints.
 
-### POST /api/v1/users/register
-Register a new user (multipart/form-data — file upload required).
+All responses follow a unified structure using `ApiResponse`:
 
-- Auth: Public
-- Content-Type: multipart/form-data
-- Form fields:
-  - `fullName` (string) — required
-  - `email` (string) — required, unique
-  - `username` (string) — required, unique
-  - `password` (string) — required
-  - `avatar` (file) — required, maxCount: 1 (uploaded to Cloudinary)
-  - `coverImage` (file) — optional, maxCount: 1 (uploaded to Cloudinary)
+```json
+{
+  "stausCode": 200,
+  "data": {},
+  "message": "Success",
+  "success": true
+}
+⚠️ Note: stausCode is intentionally misspelled in the source.
 
-- Notes:
-  - Avatar is required; `coverImage` is optional.
-  - Files are first stored in `./public/temp` and then uploaded to Cloudinary; local temp files are deleted after upload.
+🧑‍💻 User Routes
+➕ POST /register
+Register a new user (multipart/form-data)
 
-- Successful response:
-  - HTTP 201 (controller uses `res.status(201)`) — JSON ApiResponse with created user (password and refreshToken excluded).
-  - Example data: { user: { _id, username, email, fullName, avatar, coverImage, createdAt, updatedAt } }
+Fields
 
-- Example curl:
-  curl -v -X POST http://localhost:8000/api/v1/users/register \
-    -F "fullName=Amar Kumar" \
-    -F "email=amar@example.com" \
-    -F "username=amar295" \
-    -F "password=secret123" \
-    -F "avatar=@/path/to/avatar.jpg" \
-    -F "coverImage=@/path/to/cover.jpg"
+fullName (string) — required
 
-### POST /api/v1/users/login
-Login with username or email and password.
+email (string) — required, unique
 
-- Auth: Public
-- Content-Type: application/json
-- Body:
-  - `username` (string) OR `email` (string) — at least one required
-  - `password` (string) — required
+username (string) — required, unique
 
-- Response:
-  - HTTP 200 — sets HTTP-only cookies `accessToken` and `refreshToken` and returns JSON ApiResponse:
-    data includes `{ user, accessToken, refreshToken }` where `user` has password and refreshToken excluded.
+password (string) — required
 
-- Example curl:
-  curl -v -X POST http://localhost:8000/api/v1/users/login \
-    -H "Content-Type: application/json" \
-    -d '{"username":"amar295","password":"secret123"}'
+avatar (file) — required
 
-- Notes:
-  - The code sets cookies with options:
-    { httpOnly: true, secure: true }
-  - For local development, `secure: true` requires HTTPS. If running over HTTP in development, you may want to relax that (or run via HTTPS).
+coverImage (file) — optional
 
-### POST /api/v1/users/logout
-Log the user out by clearing cookies and un-setting refresh token in DB.
+Example
 
-- Auth: Protected — uses `verifyJWT`
-- How auth is read:
-  - `verifyJWT` checks `req.cookies?.accessToken` OR `Authorization` header (`Bearer <token>`)
-- Behavior:
-  - Removes refresh token from the DB for the logged-in user (sets to undefined).
-  - Clears cookies `accessToken` and `refreshToken` (with same cookie options) and returns success.
+curl -X POST http://localhost:8000/api/v1/users/register \
+-F "fullName=Amar Kumar" \
+-F "email=amar@example.com" \
+-F "username=amar295" \
+-F "password=secret123" \
+-F "avatar=@avatar.jpg"
+🔐 POST /login
+Login using username or email.
 
-- Example curl (using bearer token):
-  curl -v -X POST http://localhost:8000/api/v1/users/logout \
-    -H "Authorization: Bearer <accessToken>"
+Request Body
 
-- Example curl (using cookie):
-  curl -v -X POST http://localhost:8000/api/v1/users/logout \
-    --cookie "accessToken=<accessToken>; refreshToken=<refreshToken>"
+{
+  "username": "amar295",
+  "password": "secret123"
+}
+Behavior
 
-### POST /api/v1/users/refresh-token
-Refresh access token using refresh token (cookie or body). Note: in code the controller function is named `refreshAcessToken` (typo), route path is `/refresh-token`.
+Sets accessToken & refreshToken as HTTP-only cookies
 
-- Auth: Public (but requires a valid refresh token)
-- Accepts:
-  - Cookie: `refreshToken` OR
-  - Request body field: `refreshAcessToken` (note the spelling used in code)
-- Behavior:
-  - Verifies the refresh token JWT using `process.env.REFRESH_TOKEN_SECRET`
-  - Confirms the user exists and matches stored refresh token
-  - Generates new `accessToken` and `refreshToken`, sets cookies, and returns them in JSON
+Returns user + tokens in response
 
-- Example curl (using cookie):
-  curl -v -X POST http://localhost:8000/api/v1/users/refresh-token \
-    --cookie "refreshToken=<your_refresh_token>"
+🚪 POST /logout
+Protected route.
 
-- Example curl (using body param — note parameter name matches code's spelling):
-  curl -v -X POST http://localhost:8000/api/v1/users/refresh-token \
-    -H "Content-Type: application/json" \
-    -d '{"refreshAcessToken":"<your_refresh_token>"}'
+Clears cookies
 
-- Successful response:
-  - HTTP 200 — JSON ApiResponse with `{ accessToken, refreshToken }` and cookies set.
+Removes refresh token from DB
 
----
+Header
 
-## Data Models
+Authorization: Bearer <accessToken>
+🔁 POST /refresh-token
+Generates new tokens using refresh token.
 
-### User (src/models/user.model.js)
-Important fields:
-- username: String, required, unique, lowercase, indexed
-- email: String, required, unique, lowercase
-- fullName: String, required
-- avatar: String (Cloudinary URL), required
-- coverImage: String (Cloudinary URL), optional
-- watchHistory: [ObjectId -> Video]
-- password: String (encrypted via bcrypt)
-- refreshToken: stored token string (used for refresh flow)
-- timestamps: createdAt, updatedAt
+Accepts
 
-User model also contains instance methods used to:
-- generate access token (likely `generateAccessToken()`)
-- generate refresh token (likely `generateRefreshToken()`)
-- isPasswordCorrect(password) for password verification
+Cookie: refreshToken
 
-(See src/models/user.model.js for exact implementation.)
+OR body field (code typo):
 
-### Video (src/models/video.model.js)
-Fields:
-- videoFile: String (Cloudinary URL)
-- thumbnaail: String
-- owner: ObjectId (ref to User)
-- title, description, duration, views, isPublished
-- uses mongooseAggregatePaginate for pagination
+{
+  "refreshAcessToken": "<token>"
+}
+Returns new access & refresh tokens and updates cookies.
 
-Although the Video model exists, there are no public video routes in the current code snapshot (they may be added later).
+🧱 Data Models
+👤 User Model
+Key fields:
 
----
+username, email, fullName
 
-## Middleware & utilities
+avatar, coverImage
 
-- verifyJWT (src/middlewares/auth.middleware.js)
-  - Reads token from `req.cookies.accessToken` or `Authorization: Bearer <token>`
-  - Verifies with `process.env.ACCESS_TOKEN_SECRET`
-  - On success attaches `req.user` (user doc without password or refreshToken)
-  - Throws ApiError(401, ...) for missing/expired/invalid token
+password (bcrypt hashed)
 
-- multer configuration (src/middlewares/multer.middleware.js)
-  - Disk storage to `./public/temp`
-  - Filenames preserved (uses original name)
-  - Exported as `upload` used in register route:
-    upload.fields([{ name: "avatar", maxCount: 1 }, { name: "coverImage", maxCount: 1 }])
+refreshToken
 
-- cloudinary util (src/utils/cloudinary.js)
-  - Configured using env vars: CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET
-  - uploadOnCloudinary(localFilePath) uploads and deletes local file on success; deletes on failure
+watchHistory
 
-- ApiResponse & ApiError
-  - ApiResponse constructs consistent success responses (note `stausCode` property spelling).
-  - ApiError extends Error and contains `statusCode`, `data`, `message`, `success=false`, `errors`.
+Instance methods:
 
-- asyncHandler
-  - Wraps async controllers to forward errors to Express error handler
+generateAccessToken()
 
----
+generateRefreshToken()
 
-## Environment variables
-Create a `.env` file in project root with the following keys (used directly in code):
+isPasswordCorrect()
 
-- PORT (optional, default `8000`)
-- MONGODB_URL — base MongoDB URL (eg: mongodb+srv://user:pass@cluster.mongodb.net)
-- DB_NAME — repository defines `DB_NAME = "612amar"` in `src/constants.js`, but environment may override connection path
-- ACCESS_TOKEN_SECRET — JWT secret for access tokens
-- REFRESH_TOKEN_SECRET — JWT secret for refresh tokens
-- CORS_ORIGIN — allowed origin for CORS (app uses this)
-- CLOUDINARY_CLOUD_NAME
-- CLOUDINARY_API_KEY
-- CLOUDINARY_API_SECRET
+🎥 Video Model
+Includes:
 
-Example .env:
+videoFile, thumbnail
+
+owner
+
+views, duration, isPublished
+
+Uses aggregation pagination
+
+No public video routes yet.
+
+🔐 Authentication Middleware
+verifyJWT
+Reads token from:
+
+req.cookies.accessToken
+
+OR Authorization: Bearer <token>
+
+Attaches sanitized req.user
+
+Throws 401 on invalid or expired token
+
+☁️ File Uploads & Cloudinary
+multer stores files in public/temp
+
+Files are uploaded to Cloudinary
+
+Local temp files are deleted after success or failure
+
+Environment Variables
+
+CLOUDINARY_CLOUD_NAME
+CLOUDINARY_API_KEY
+CLOUDINARY_API_SECRET
+🌱 Environment Variables
+Create a .env file in the project root:
+
 PORT=8000
-MONGODB_URL="mongodb+srv://<user>:<pass>@cluster0.mongodb.net"
-ACCESS_TOKEN_SECRET="some_access_secret"
-REFRESH_TOKEN_SECRET="some_refresh_secret"
-CLOUDINARY_CLOUD_NAME="..."
-CLOUDINARY_API_KEY="..."
-CLOUDINARY_API_SECRET="..."
-CORS_ORIGIN="http://localhost:3000"
+MONGODB_URL=mongodb+srv://<user>:<pass>@cluster.mongodb.net
+ACCESS_TOKEN_SECRET=your_access_secret
+REFRESH_TOKEN_SECRET=your_refresh_secret
+CLOUDINARY_CLOUD_NAME=xxxx
+CLOUDINARY_API_KEY=xxxx
+CLOUDINARY_API_SECRET=xxxx
+CORS_ORIGIN=http://localhost:3000
+▶️ Local Development
+git clone https://github.com/amar-295/backend.git
+cd backend
+npm install
+npm start
+Server runs at:
 
----
+http://localhost:8000
+🔒 Security Notes
+Cookies are configured as:
 
-## Local development — setup & run
+{ httpOnly: true, secure: true }
+⚠️ For local HTTP development:
 
-1. Clone repository:
-   git clone https://github.com/amar-295/backend.git
-   cd backend
+Set secure: false, or
 
-2. Install:
-   npm install
-   (project uses ESM imports — use Node >= 14+)
+Run backend over HTTPS
 
-3. Create `.env` as described above.
+Refresh tokens are validated against the database to prevent reuse and token theft.
 
-4. Start server:
-   npm start
-   or
-   node src/index.js
+🐛 Common Pitfalls
+Cookies not being set
 
-5. Server will try to connect to MongoDB at `${process.env.MONGODB_URL}/${DB_NAME}` where DB_NAME is `612amar` (see `src/constants.js`) and then start listening on `process.env.PORT` (or `8000`).
+Enable credentials: true on frontend
 
----
+Ensure CORS_ORIGIN matches frontend URL
 
-## File uploads & Cloudinary details
-- multer stores uploads to `./public/temp` using original filename.
-- After successful Cloudinary upload, local temp file is deleted (via fs.unlinkSync).
-- Cloudinary config is read from env vars.
-- If upload fails, local temp file is also deleted (cleanup).
+Secure cookies on HTTP
 
----
+Cookies won’t be stored — disable secure locally
 
-## Security notes & cookies
-- Access and refresh tokens are set as cookies with:
-  { httpOnly: true, secure: true }
-  - `secure: true` requires HTTPS. For local HTTP development, you may need to conditionally set `secure` to `false` or run over HTTPS.
-- `verifyJWT` reads token from cookie OR `Authorization` header: flexible for API clients or browsers.
-- Refresh token is persisted on the user record in DB; refresh endpoint validates that stored value matches the incoming token.
-- Make sure secrets are strong and not committed to source.
+Refresh token typo
 
----
+Body field name is refreshAcessToken (matches source code)
 
-## Troubleshooting & common pitfalls
-- Cookies not being set in development:
-  - Browser blocks cross-site cookies without proper CORS and SameSite settings. app.js config uses `origin: process.env.CORS_ORIGIN, credentials: true`. Ensure front-end sends credentials and the origin matches.
-- secure cookie over HTTP:
-  - `secure: true` blocks cookie over plain HTTP. For local testing, either set `secure` false or use HTTPS.
-- Typo/field name mismatch:
-  - The refresh endpoint accepts `refreshAcessToken` in request body (note spelling). Prefer sending refresh token as cookie `refreshToken`.
-  - ApiResponse has `stausCode` spelled incorrectly in its property. Be aware when parsing the response object programmatically.
-- DB connection:
-  - Connection string is `${MONGODB_URL}/${DB_NAME}`; ensure MONGODB_URL does not already include a database name or duplicate names may occur.
+MongoDB connection issues
 
----
+Ensure DB name is not duplicated in MONGODB_URL
+
+📺 About the Series
+This project is part of the Chai aur Backend YouTube series, focused on teaching backend development using real-world patterns, clean architecture, and production-ready practices.
 
