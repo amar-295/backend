@@ -25,36 +25,6 @@ connectDB()
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // Database connect first approach
 /*
 

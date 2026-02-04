@@ -8,6 +8,11 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 const generateAccessAndRefreshTokens  = async(userId) => {
   try {
     const user = await User.findById(userId)
+
+    if (!user) {
+      throw new ApiError(404, "User not found while generating tokens")
+    }
+
     const accessToken =  user.generateAccessToken()
     const refreshToken =  user.generateRefreshToken()
 
@@ -93,7 +98,7 @@ const registerUser = asyncHandler(async (req, res) => {
 const loginUser = asyncHandler(async (req, res) => {
 
   const {email, username, password} = req.body
-  if (!username || !email) {
+  if (!(username || email)) {
     throw new ApiError(400, "Username or passqord is required")
   }
 
@@ -107,7 +112,7 @@ const loginUser = asyncHandler(async (req, res) => {
 
   const isPasswordValid = await user.isPasswordCorrect(password)
 
-  if (!user) {
+  if (!isPasswordValid) {
     throw new ApiError(401, "Invalid user credentials")
   }
 
@@ -138,7 +143,7 @@ const loginUser = asyncHandler(async (req, res) => {
 });
 
 const logoutUser = asyncHandler(async (req, res) => {
-  User.findByIdAndUpdate(
+  await User.findByIdAndUpdate(
     req.user._id,
     {
       $set: {
@@ -157,9 +162,9 @@ const logoutUser = asyncHandler(async (req, res) => {
 
   return res.status(200)
   .clearCookie("accessToken", options)
-  .clearCookie("refreshTOken", options)
+  .clearCookie("refreshToken", options)
   .json(
-    new ApiError(200, {}, "User logged Out")
+    new ApiResponse(200, {}, "User logged Out")
   )
   
 })
